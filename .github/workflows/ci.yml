@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Tool versions come from mise.toml, so CI and local development are
+      # provably the same.
+      - uses: jdx/mise-action@v4
+
+      - run: terraform fmt -check -recursive
+
+      # Modules have no backend and no credentials, so -backend=false is enough
+      # to resolve providers and type-check every expression.
+      - name: Validate modules
+        run: |
+          for dir in modules/*/; do
+            echo "::group::${dir}"
+            terraform -chdir="${dir}" init -backend=false -input=false
+            terraform -chdir="${dir}" validate
+            echo "::endgroup::"
+          done
+
+      # Conventions the modules here are supposed to share. Documentation alone
+      # would drift the moment a second module is added, and the version-bump
+      # wiring fails silently rather than loudly.
+      - name: Check module conventions
+        run: |
+          fail=0
+
+          # The version lives in _meta and nowhere else, so that is the one file
+          # release-please has to be pointed at. If this wiring breaks it fails
+          # silently - the version simply stops moving - which is exactly the
+          # kind of thing that needs a check rather than a convention.
+          if ! grep -q 'x-release-please-version' modules/_meta/main.tf; then
+            echo "::error::_meta: no x-release-please-version annotation, so no module version will ever be bumped"
+            fail=1
+          fi
+          if ! jq -e '.["extra-files"][]? | select(.path == "modules/_meta/main.tf")' \
+               release-please-config.json >/dev/null; then
+            echo "::error::_meta: missing from release-please extra-files, so the version will go stale"
+            fail=1
+          fi
+
+          for dir in modules/*/; do
+            name=$(basename "${dir}")
+            [ "${name}" = "_meta" ] && continue
+
+            if ! grep -q 'source *= *"../_meta"' "${dir}main.tf"; then
+              echo "::error::${name}: does not call the _meta module"
+              fail=1
+            fi
+
+            if ! grep -q 'module.meta.tags' "${dir}main.tf"; then
+              echo "::error::${name}: does not tag its resources with module.meta.tags"
+              fail=1
+            fi
+
+            if ! grep -q "module_name *= *\"${name}\"" "${dir}main.tf"; then
+              echo "::error::${name}: passes the wrong module_name to _meta, so its tags will misreport where it came from"
+              fail=1
+            fi
+          done
+
+          exit "${fail}"
+
+      - run: actionlint
