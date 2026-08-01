@@ -1,18 +1,11 @@
+# Shared tags and the released version. Every module in this repository does
+# this, so the version is written in exactly one file.
+module "meta" {
+  source      = "../_meta"
+  module_name = "github-oidc-role"
+}
+
 locals {
-  # Bumped automatically by release-please; see extra-files in
-  # release-please-config.json. Do not edit by hand.
-  module_version = "0.0.1" # x-release-please-version
-
-  module_source = "danb27/terraform-modules//modules/github-oidc-role"
-
-  # Tagging every resource with the module and the exact version it came from
-  # means you can tell, from the console alone, which release produced a role.
-  tags = {
-    terraform      = "true"
-    module         = local.module_source
-    module_version = local.module_version
-  }
-
   oidc_provider_arn = coalesce(
     var.oidc_provider_arn,
     one(data.aws_iam_openid_connect_provider.github[*].arn),
@@ -60,7 +53,7 @@ resource "aws_iam_role" "this" {
   name               = var.name
   description        = var.description
   assume_role_policy = data.aws_iam_policy_document.assume.json
-  tags               = local.tags
+  tags               = module.meta.tags
 }
 
 resource "aws_iam_role_policy" "inline" {

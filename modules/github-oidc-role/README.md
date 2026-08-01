@@ -69,8 +69,12 @@ source would find nothing. That config passes `oidc_provider_arn` explicitly.
 
 Every resource is tagged `terraform = "true"`, plus the module source and the
 exact released version it came from — so you can tell from the console which
-release produced a given role. The version string is bumped by release-please
-on each release; it is not a hand-maintained constant.
+release produced a given role, and spot a consumer whose `?ref=` has drifted.
+
+Those tags come from the shared [`_meta`](../_meta) module rather than being
+written here, so the version string exists in one file for the whole repository.
+release-please bumps it; it is not a hand-maintained constant, and CI fails if a
+module stops using it.
 
 ## Trust boundary
 

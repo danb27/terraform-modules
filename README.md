@@ -10,9 +10,20 @@ Nothing secret lives here; secrets belong in the consuming configuration.
 
 | Module | Provider | Notes |
 | --- | --- | --- |
-| [`github-oidc-role`](modules/github-oidc-role) | AWS | IAM role assumable by a named GitHub repository via OIDC. Takes the account's OIDC provider ARN as input rather than creating it — the provider is a per-account singleton. |
+| [`github-oidc-role`](modules/github-oidc-role) | AWS | IAM role assumable by a named GitHub repository via OIDC. Finds the account's OIDC provider itself — the provider is a per-account singleton and this module never creates one. |
+| [`_meta`](modules/_meta) | — | Internal. Shared tags and the released version, so that version lives in exactly one file. Not for external use. |
 
 Each module's `variables.tf` is the source of truth for its inputs.
+
+## Conventions, and how they are held
+
+Every module tags its resources via `_meta`, which is also the only place the
+released version is written. CI enforces it: a module that skips `_meta`, tags
+without it, or passes the wrong `module_name` fails the build, as does a
+`_meta` that release-please is no longer wired to bump.
+
+That last one is the reason it is a check and not a paragraph — a broken
+version bump does not error, it just quietly reports a stale version forever.
 
 ## What isn't here
 
