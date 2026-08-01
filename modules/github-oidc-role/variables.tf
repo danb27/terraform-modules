@@ -12,12 +12,13 @@ variable "oidc_provider_arn" {
   description = <<-EOT
     ARN of the account's GitHub Actions OIDC provider.
 
-    Taken as an input rather than looked up, because the account-level config
-    that creates the provider needs a role in the same apply - a data source
-    would not resolve. Consumers that are not creating the provider can pass
-    data.aws_iam_openid_connect_provider.github.arn.
+    Leave unset in almost every case - the module looks the provider up itself.
+
+    Pass it explicitly only from the account-level configuration that *creates*
+    the provider, where a data source would find nothing on the first apply.
   EOT
   type        = string
+  default     = null
 }
 
 variable "github_owner" {

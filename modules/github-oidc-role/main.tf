@@ -1,3 +1,33 @@
+locals {
+  # Bumped automatically by release-please; see extra-files in
+  # release-please-config.json. Do not edit by hand.
+  module_version = "0.0.1" # x-release-please-version
+
+  module_source = "danb27/terraform-modules//modules/github-oidc-role"
+
+  # Tagging every resource with the module and the exact version it came from
+  # means you can tell, from the console alone, which release produced a role.
+  tags = {
+    terraform      = "true"
+    module         = local.module_source
+    module_version = local.module_version
+  }
+
+  oidc_provider_arn = coalesce(
+    var.oidc_provider_arn,
+    one(data.aws_iam_openid_connect_provider.github[*].arn),
+  )
+}
+
+# Skipped when the caller supplies the ARN, which is what the configuration
+# creating the provider has to do - on its first apply there is nothing here
+# for a data source to find.
+data "aws_iam_openid_connect_provider" "github" {
+  count = var.oidc_provider_arn == null ? 1 : 0
+
+  url = "https://token.actions.githubusercontent.com"
+}
+
 data "aws_iam_policy_document" "assume" {
   statement {
     effect  = "Allow"
@@ -5,7 +35,7 @@ data "aws_iam_policy_document" "assume" {
 
     principals {
       type        = "Federated"
-      identifiers = [var.oidc_provider_arn]
+      identifiers = [local.oidc_provider_arn]
     }
 
     # Without this, a token minted for any audience would be accepted.
@@ -30,6 +60,7 @@ resource "aws_iam_role" "this" {
   name               = var.name
   description        = var.description
   assume_role_policy = data.aws_iam_policy_document.assume.json
+  tags               = local.tags
 }
 
 resource "aws_iam_role_policy" "inline" {
