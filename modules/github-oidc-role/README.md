@@ -7,18 +7,54 @@ long-lived AWS access keys. The trust policy is scoped to a single repository.
 
 ```hcl
 module "ci_role" {
-  source = "github.com/danb27/terraform-modules//modules/github-oidc-role?ref=v0.1.0"
+  source = "github.com/danb27/terraform-modules//modules/github-oidc-role?ref=v0.2.0"
 
   name               = "my-project-github-actions"
   description        = "Terraform for danb27/my-project."
   github_owner       = "danb27"
   github_repo        = "my-project"
+  github_owner_id    = 42096328   # gh api users/danb27 --jq .id
+  github_repo_id     = 1319027887 # gh api repos/danb27/my-project --jq .id
   inline_policy_json = data.aws_iam_policy_document.ci.json
 }
 ```
 
 That's the whole thing — the module finds the account's OIDC provider itself.
 See `variables.tf` for the full input list.
+
+## Set the numeric IDs
+
+`github_owner_id` and `github_repo_id` are optional, and you want them.
+
+GitHub is migrating the OIDC `sub` claim from repository *names* to immutable
+numeric identifiers:
+
+```
+repo:danb27/my-project:pull_request                      name-based
+repo:danb27@42096328/my-project@1319027887:pull_request   immutable
+```
+
+Which form a token carries is decided GitHub-side. When it flips, a trust policy
+matching only the other form stops matching and every workflow in the repository
+fails with:
+
+```
+Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+Nothing in that error points at the sub claim, and nothing in your configuration
+changed — which makes it an unpleasant thing to debug. Supplying both IDs trusts
+both forms, because policy condition values are OR'd, so the switch passes
+unnoticed in either direction.
+
+If you do hit it, CloudTrail has the claim that was actually presented:
+
+```bash
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+  --max-results 1 --query 'Events[0].CloudTrailEvent' --output text \
+  | jq -r .userIdentity.userName
+```
 
 ## Wiring up the workflow
 
