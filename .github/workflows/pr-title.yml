@@ -1,0 +1,14 @@
+name: PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+# This repository squash-merges, so the pull request title becomes the commit
+# subject on main - which is what release-please reads.
+jobs:
+  title:
+    uses: danb27/reusable-actions/.github/workflows/pr-title.yml@main
