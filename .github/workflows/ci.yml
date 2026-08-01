@@ -33,4 +33,31 @@ jobs:
             echo "::endgroup::"
           done
 
+      # Conventions the modules here are supposed to share. Documentation alone
+      # would drift the moment a second module is added, and the version-bump
+      # wiring fails silently rather than loudly.
+      - name: Check module conventions
+        run: |
+          fail=0
+          for dir in modules/*/; do
+            name=$(basename "${dir}")
+
+            if ! grep -q 'x-release-please-version' "${dir}main.tf"; then
+              echo "::error::${name}: no x-release-please-version annotation, so its version will never be bumped"
+              fail=1
+            fi
+
+            if ! grep -qE 'terraform +=' "${dir}main.tf"; then
+              echo "::error::${name}: does not set the terraform tag on its resources"
+              fail=1
+            fi
+
+            if ! jq -e --arg p "${dir}main.tf" \
+                 '.["extra-files"][]? | select(.path == $p)' release-please-config.json >/dev/null; then
+              echo "::error::${name}: ${dir}main.tf missing from release-please extra-files, so its version string will go stale"
+              fail=1
+            fi
+          done
+          exit "${fail}"
+
       - run: actionlint
