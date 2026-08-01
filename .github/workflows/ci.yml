@@ -2,8 +2,6 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -13,19 +11,16 @@ defaults:
     shell: bash
 
 jobs:
-  terraform:
-    name: Format and validate
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.14.3
-          terraform_wrapper: false
+      # Tool versions come from mise.toml, so CI and local development are
+      # provably the same.
+      - uses: jdx/mise-action@v2
 
-      - name: Check formatting
-        run: terraform fmt -check -recursive
+      - run: terraform fmt -check -recursive
 
       # Modules have no backend and no credentials, so -backend=false is enough
       # to resolve providers and type-check every expression.
@@ -38,10 +33,4 @@ jobs:
             echo "::endgroup::"
           done
 
-  actionlint:
-    name: Lint workflows
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: jdx/mise-action@v2
       - run: actionlint

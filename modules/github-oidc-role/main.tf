@@ -1,10 +1,3 @@
-locals {
-  subjects = [
-    for claim in var.allowed_claims :
-    "repo:${var.github_owner}/${var.github_repo}:${claim}"
-  ]
-}
-
 data "aws_iam_policy_document" "assume" {
   statement {
     effect  = "Allow"
@@ -22,27 +15,24 @@ data "aws_iam_policy_document" "assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # The actual boundary. Everything else about who can deploy is downstream
-    # of this condition, so it is worth reading carefully when it changes.
+    # The actual boundary: any workflow context in this one repository. Narrow
+    # the suffix to restrict it further - "ref:refs/heads/main" for the default
+    # branch only, "environment:production" for a gated environment.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = local.subjects
+      values   = ["repo:${var.github_owner}/${var.github_repo}:*"]
     }
   }
 }
 
 resource "aws_iam_role" "this" {
-  name                 = var.name
-  description          = var.description
-  assume_role_policy   = data.aws_iam_policy_document.assume.json
-  max_session_duration = var.max_session_duration
-  tags                 = var.tags
+  name               = var.name
+  description        = var.description
+  assume_role_policy = data.aws_iam_policy_document.assume.json
 }
 
 resource "aws_iam_role_policy" "inline" {
-  count = var.inline_policy_json == null ? 0 : 1
-
   name   = "inline"
   role   = aws_iam_role.this.id
   policy = var.inline_policy_json

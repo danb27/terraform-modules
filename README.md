@@ -1,7 +1,6 @@
 # Terraform Modules
 
-Reusable Terraform modules, intended to be consumed from other repositories by
-git source.
+Reusable Terraform modules, consumed from other repositories by git source.
 
 Public so that Terraform can fetch modules in CI without a token — a private
 module source needs a PAT or deploy key wired into every consuming workflow.
@@ -11,8 +10,16 @@ Nothing secret lives here; secrets belong in the consuming configuration.
 
 | Module | Provider | Notes |
 | --- | --- | --- |
-| [`github-oidc-role`](modules/github-oidc-role) | AWS | IAM role assumable by a named GitHub repository via OIDC, so CI needs no long-lived access keys. Takes the account's OIDC provider ARN as input rather than creating it — the provider is a per-account singleton. |
-| [`cloudflare-gated-site`](modules/cloudflare-gated-site) | Cloudflare | Zone plus Zero Trust Access applications gating chosen paths behind an email allowlist. Interface is provisional — one consumer so far. |
+| [`github-oidc-role`](modules/github-oidc-role) | AWS | IAM role assumable by a named GitHub repository via OIDC. Takes the account's OIDC provider ARN as input rather than creating it — the provider is a per-account singleton. |
+
+Each module's `variables.tf` is the source of truth for its inputs.
+
+## What isn't here
+
+A module gets extracted when it has a second real consumer, not before. Cloudflare
+zone and Access configuration lives inline in `danb27/daninthreecolors` for that
+reason — one site, so an interface designed against a single caller would be
+guesswork.
 
 ## Usage
 
@@ -26,12 +33,10 @@ module "ci_role" {
 }
 ```
 
-Each module's README documents its inputs and outputs.
-
 ## Versioning
 
 Tagged `vMAJOR.MINOR.PATCH`. Below `v1.0.0`, treat minor bumps as potentially
-breaking — the modules here are young and their interfaces are still moving.
+breaking.
 
 ## Local development
 
@@ -40,6 +45,3 @@ mise install
 terraform fmt -recursive -check
 actionlint
 ```
-
-CI runs `fmt -check` and `validate` for every module on each pull request.
-Modules are validated with `-backend=false`, so no credentials are involved.
