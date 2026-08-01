@@ -10,6 +10,20 @@ locals {
     var.oidc_provider_arn,
     one(data.aws_iam_openid_connect_provider.github[*].arn),
   )
+
+  # GitHub is moving the sub claim to immutable identifiers, which embed the
+  # numeric owner and repository IDs:
+  #
+  #   repo:danb27/aws-infra:pull_request                     (name-based)
+  #   repo:danb27@42096328/aws-infra@1319056665:pull_request (immutable)
+  #
+  # Which form a token carries is decided GitHub-side and can change under you.
+  # When it does, a policy matching only the other form silently stops matching
+  # and every workflow fails AccessDenied on sts:AssumeRoleWithWebIdentity.
+  # Trusting both is what makes that switch a non-event.
+  immutable_sub = var.github_owner_id != null && var.github_repo_id != null ? (
+    "repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:*"
+  ) : ""
 }
 
 # Skipped when the caller supplies the ARN, which is what the configuration
@@ -41,10 +55,16 @@ data "aws_iam_policy_document" "assume" {
     # The actual boundary: any workflow context in this one repository. Narrow
     # the suffix to restrict it further - "ref:refs/heads/main" for the default
     # branch only, "environment:production" for a gated environment.
+    #
+    # Multiple values are OR'd, so this trusts the same repository under either
+    # sub format. See local.immutable_sub.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_owner}/${var.github_repo}:*"]
+      values = compact([
+        "repo:${var.github_owner}/${var.github_repo}:*",
+        local.immutable_sub,
+      ])
     }
   }
 }
