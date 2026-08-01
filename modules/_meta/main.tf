@@ -11,5 +11,5 @@
 locals {
   # Bumped by release-please; see extra-files in release-please-config.json.
   # This is the only place the version is written. Do not edit by hand.
-  module_version = "0.1.0" # x-release-please-version
+  module_version = "0.2.0" # x-release-please-version
 }
