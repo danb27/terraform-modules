@@ -1,0 +1,25 @@
+# Terraform
+**/.terraform/*
+# Lock files belong to root configurations, not to modules.
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Editors
+.idea/
+*.swp
+
+# macOS
+.DS_Store
