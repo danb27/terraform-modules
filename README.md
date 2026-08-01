@@ -35,8 +35,13 @@ module "ci_role" {
 
 ## Versioning
 
-Tagged `vMAJOR.MINOR.PATCH`. Below `v1.0.0`, treat minor bumps as potentially
-breaking.
+Automated by release-please from conventional commits: merging to `main` opens a
+release PR, and merging that tags `vMAJOR.MINOR.PATCH` and publishes the release.
+Below `v1.0.0`, treat minor bumps as potentially breaking.
+
+CI does not run on the release PR — PRs opened with the default `GITHUB_TOKEN`
+don't trigger `on: pull_request` workflows. That PR only touches the changelog
+and version file.
 
 ## Local development
 
