@@ -20,17 +20,37 @@ module "ci_role" {
 That's the whole thing — the module finds the account's OIDC provider itself.
 See `variables.tf` for the full input list.
 
-## Why the trust policy doesn't match `sub`
+## Why the trust policy has two conditions
 
-Most examples you'll find scope a GitHub OIDC role with a `StringLike` on the
-`sub` claim. This module matches the `repository` claim instead:
+Most examples you'll find scope a GitHub OIDC role with a single `StringLike`
+on the `sub` claim. This module matches `sub` **and** `repository`:
 
 ```hcl
-"token.actions.githubusercontent.com:repository" = "danb27/my-project"
+"token.actions.githubusercontent.com:sub" = [        # StringLike
+  "repo:danb27/my-project:*",
+  "repo:danb27@*/my-project@*:*",
+]
+"token.actions.githubusercontent.com:repository" = "danb27/my-project"  # StringEquals
 ```
 
-The reason is that `sub` is a moving target. GitHub is migrating it from
-repository *names* to immutable numeric identifiers:
+Separate condition blocks are AND'd, so both must hold. They do different jobs.
+
+### The `sub` condition is mandatory
+
+IAM classifies `token.actions.githubusercontent.com` as a
+[*shared* OIDC provider](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_oidc_secure-by-default.html):
+every GitHub customer federates through the same issuer URL, so the issuer alone
+proves nothing about which tenant a token came from. For shared providers IAM
+requires the trust policy to constrain a designated claim — for GitHub, `sub`
+(or `job_workflow_ref`). Leave it out and both `CreateRole` and
+`UpdateAssumeRolePolicy` fail with `MalformedPolicyDocument`, naming the claim.
+
+No other claim substitutes, however precisely you match it.
+
+### But `sub` is a moving target
+
+GitHub is migrating it from repository *names* to immutable numeric
+identifiers:
 
 ```
 repo:danb27/my-project:pull_request                      name-based
@@ -49,18 +69,38 @@ Not authorized to perform sts:AssumeRoleWithWebIdentity
 Nothing in that error points at the `sub` claim, and nothing in your Terraform
 changed — which makes it an unpleasant thing to debug.
 
-The migration only rewrites `sub`. The `repository` claim is `owner/repo` under
-both formats, so matching it sidesteps the problem rather than working around
-it. It's also an exact `StringEquals` rather than a wildcard, and it needs no
-numeric IDs as inputs.
+So the `sub` condition lists both forms — values within one condition are OR'd,
+which makes the switch a non-event in either direction. The numeric IDs are
+wildcarded rather than taken as inputs.
 
-This works because AWS STS added support for GitHub's provider-specific claims
-as IAM condition keys in January 2026. The full set:
+### And the `repository` condition is what actually bounds trust
+
+A wildcard like `repo:danb27@*/my-project@*:*` would be uncomfortably loose on
+its own. IAM's `*` spans any character including `:` and `/`, so a sub crafted
+to slip past it is at least conceivable — an environment named with `/`, `@`
+and `:` in another repository under the same owner.
+
+It is not on its own. The second condition is AND'd with it:
+
+```hcl
+"token.actions.githubusercontent.com:repository" = "danb27/my-project"
+```
+
+Any such crafted token would still have to present `repository` equal to
+`danb27/my-project`, and a token from another repository cannot. The migration
+only rewrites `sub`; this claim is `owner/repo` under both formats, so it needs
+no wildcard and no numeric IDs.
+
+Matching `repository` is possible because AWS STS added support for GitHub's
+provider-specific claims as IAM condition keys in January 2026. The full set:
 
 ```
 actor  actor_id  job_workflow_ref  repository  repository_id
 repository_owner_id  workflow  ref  environment  enterprise_id
 ```
+
+Note these are *additions*. They do not satisfy the shared-provider
+requirement above, which only `sub` and `job_workflow_ref` can.
 
 One consequence worth knowing: if the `repository` claim is ever removed from
 your tokens via `include_claim_keys`, the condition cannot match and assumption

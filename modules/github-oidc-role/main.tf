@@ -38,24 +38,54 @@ data "aws_iam_policy_document" "assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # The actual boundary: any workflow context in this one repository.
+    # Required, and not by us. IAM classifies token.actions.githubusercontent.com
+    # as a *shared* OIDC provider - every GitHub customer federates through the
+    # same issuer URL, so the issuer alone proves nothing about tenancy. For
+    # those providers IAM insists the trust policy constrain a specific claim,
+    # and for GitHub that claim is "sub". Omit this and CreateRole and
+    # UpdateAssumeRolePolicy both fail:
     #
-    # This deliberately matches the "repository" claim rather than picking
-    # apart "sub". GitHub is migrating sub to a format embedding numeric owner
-    # and repository IDs:
+    #   MalformedPolicyDocument: Trust policy with trusted principal
+    #   ...:oidc-provider/token.actions.githubusercontent.com must evaluate,
+    #   using StringEquals, StringLike or StringEqualsIgnoreCase,
+    #   token.actions.githubusercontent.com:sub or
+    #   token.actions.githubusercontent.com:job_workflow_ref which is not
+    #   scoped to all.
+    #
+    # No other claim substitutes, however precisely it is matched.
+    #
+    # Both forms are listed because GitHub is migrating sub to a format
+    # embedding numeric owner and repository IDs:
     #
     #   repo:danb27/aws-infra:pull_request                     (name-based)
     #   repo:danb27@42096328/aws-infra@1319056665:pull_request (immutable)
     #
-    # A policy matching only one form stops matching when a repository moves to
-    # the other, and every workflow fails AccessDenied on
-    # sts:AssumeRoleWithWebIdentity with nothing in the error naming the claim.
-    # The "repository" claim is "owner/repo" under both formats, so matching it
-    # sidesteps the migration entirely - and matches exactly, with no wildcard.
+    # Values are OR'd, so a repository switching between them is a non-event.
+    # The IDs are wildcarded rather than taken as inputs - which would be too
+    # loose on its own, and is not on its own. See the condition below.
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values = [
+        "repo:${var.github_owner}/${var.github_repo}:*",
+        "repo:${var.github_owner}@*/${var.github_repo}@*:*",
+      ]
+    }
+
+    # The actual boundary: any workflow context in this one repository.
+    #
+    # Separate condition blocks are AND'd, so this exact match is what bounds
+    # trust and the wildcards above only satisfy the IAM requirement. That
+    # matters - a sub built to slip past those wildcards (an environment name
+    # containing "/", "@" and ":" in another repository under this owner) still
+    # has to present repository == "owner/repo", which it cannot.
+    #
+    # Unlike sub, this claim is "owner/repo" under both formats, so it needs no
+    # wildcard and is unaffected by the migration.
     #
     # To restrict further, add a condition on another claim rather than
-    # narrowing this one: ":ref" for a single branch, ":environment" for a
-    # gated environment. AWS exposes actor, actor_id, job_workflow_ref,
+    # narrowing either of these: ":ref" for a single branch, ":environment" for
+    # a gated environment. AWS exposes actor, actor_id, job_workflow_ref,
     # repository, repository_id, repository_owner_id, workflow, ref,
     # environment and enterprise_id.
     condition {
