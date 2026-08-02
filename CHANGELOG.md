@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/danb27/terraform-modules/compare/v0.3.0...v0.3.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* **github-oidc-role:** restore the sub condition IAM requires ([#8](https://github.com/danb27/terraform-modules/issues/8)) ([788f9a1](https://github.com/danb27/terraform-modules/commit/788f9a14250bbc66714c1f67af4079956ef24b65))
+
 ## [0.3.0](https://github.com/danb27/terraform-modules/compare/v0.2.0...v0.3.0) (2026-08-02)
 
 
