@@ -13,8 +13,6 @@ module "ci_role" {
   description        = "Terraform for danb27/my-project."
   github_owner       = "danb27"
   github_repo        = "my-project"
-  github_owner_id    = 42096328   # gh api users/danb27 --jq .id
-  github_repo_id     = 1319027887 # gh api repos/danb27/my-project --jq .id
   inline_policy_json = data.aws_iam_policy_document.ci.json
 }
 ```
@@ -22,32 +20,54 @@ module "ci_role" {
 That's the whole thing — the module finds the account's OIDC provider itself.
 See `variables.tf` for the full input list.
 
-## Set the numeric IDs
+## Why the trust policy doesn't match `sub`
 
-`github_owner_id` and `github_repo_id` are optional, and you want them.
+Most examples you'll find scope a GitHub OIDC role with a `StringLike` on the
+`sub` claim. This module matches the `repository` claim instead:
 
-GitHub is migrating the OIDC `sub` claim from repository *names* to immutable
-numeric identifiers:
+```hcl
+"token.actions.githubusercontent.com:repository" = "danb27/my-project"
+```
+
+The reason is that `sub` is a moving target. GitHub is migrating it from
+repository *names* to immutable numeric identifiers:
 
 ```
 repo:danb27/my-project:pull_request                      name-based
 repo:danb27@42096328/my-project@1319027887:pull_request   immutable
 ```
 
-Which form a token carries is decided GitHub-side. When it flips, a trust policy
-matching only the other form stops matching and every workflow in the repository
-fails with:
+Repositories created after 2026-07-15 use the immutable format by default;
+older ones keep the name-based format until the owner opts in, per org or per
+repository. A trust policy matching only one form stops matching when a
+repository moves to the other, and every workflow in it fails with:
 
 ```
 Not authorized to perform sts:AssumeRoleWithWebIdentity
 ```
 
-Nothing in that error points at the sub claim, and nothing in your configuration
-changed — which makes it an unpleasant thing to debug. Supplying both IDs trusts
-both forms, because policy condition values are OR'd, so the switch passes
-unnoticed in either direction.
+Nothing in that error points at the `sub` claim, and nothing in your Terraform
+changed — which makes it an unpleasant thing to debug.
 
-If you do hit it, CloudTrail has the claim that was actually presented:
+The migration only rewrites `sub`. The `repository` claim is `owner/repo` under
+both formats, so matching it sidesteps the problem rather than working around
+it. It's also an exact `StringEquals` rather than a wildcard, and it needs no
+numeric IDs as inputs.
+
+This works because AWS STS added support for GitHub's provider-specific claims
+as IAM condition keys in January 2026. The full set:
+
+```
+actor  actor_id  job_workflow_ref  repository  repository_id
+repository_owner_id  workflow  ref  environment  enterprise_id
+```
+
+One consequence worth knowing: if the `repository` claim is ever removed from
+your tokens via `include_claim_keys`, the condition cannot match and assumption
+is denied. That fails closed — a broken role, not an open one.
+
+If you do hit an unexplained denial, CloudTrail has the claim that was actually
+presented:
 
 ```bash
 aws cloudtrail lookup-events \
@@ -119,6 +139,15 @@ from a fork does **not** receive the base repository's OIDC subject, so this
 does not expose the role to outside contributors — but it does expose it to any
 branch someone with write access can push.
 
-To narrow it to a single branch or a gated environment, edit the `sub`
-condition in `main.tf`. It is deliberately not an input: nothing needed one yet,
-and a knob nobody sets is a knob nobody tests.
+Trust follows the repository *name*. Rename the repository and the role stops
+trusting it; give another repository the old name and the role trusts that one
+instead. To bind to the repository itself rather than its name, add a condition
+on `repository_id` and `repository_owner_id`, which are immutable:
+
+```bash
+gh api repos/danb27/my-project --jq '{repo: .id, owner: .owner.id}'
+```
+
+To narrow to a single branch or a gated environment, add a condition on `ref`
+or `environment` in `main.tf`. None of these are inputs: nothing needed one
+yet, and a knob nobody sets is a knob nobody tests.
