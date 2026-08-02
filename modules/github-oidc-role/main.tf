@@ -10,20 +10,6 @@ locals {
     var.oidc_provider_arn,
     one(data.aws_iam_openid_connect_provider.github[*].arn),
   )
-
-  # GitHub is moving the sub claim to immutable identifiers, which embed the
-  # numeric owner and repository IDs:
-  #
-  #   repo:danb27/aws-infra:pull_request                     (name-based)
-  #   repo:danb27@42096328/aws-infra@1319056665:pull_request (immutable)
-  #
-  # Which form a token carries is decided GitHub-side and can change under you.
-  # When it does, a policy matching only the other form silently stops matching
-  # and every workflow fails AccessDenied on sts:AssumeRoleWithWebIdentity.
-  # Trusting both is what makes that switch a non-event.
-  immutable_sub = var.github_owner_id != null && var.github_repo_id != null ? (
-    "repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:*"
-  ) : ""
 }
 
 # Skipped when the caller supplies the ARN, which is what the configuration
@@ -52,19 +38,30 @@ data "aws_iam_policy_document" "assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # The actual boundary: any workflow context in this one repository. Narrow
-    # the suffix to restrict it further - "ref:refs/heads/main" for the default
-    # branch only, "environment:production" for a gated environment.
+    # The actual boundary: any workflow context in this one repository.
     #
-    # Multiple values are OR'd, so this trusts the same repository under either
-    # sub format. See local.immutable_sub.
+    # This deliberately matches the "repository" claim rather than picking
+    # apart "sub". GitHub is migrating sub to a format embedding numeric owner
+    # and repository IDs:
+    #
+    #   repo:danb27/aws-infra:pull_request                     (name-based)
+    #   repo:danb27@42096328/aws-infra@1319056665:pull_request (immutable)
+    #
+    # A policy matching only one form stops matching when a repository moves to
+    # the other, and every workflow fails AccessDenied on
+    # sts:AssumeRoleWithWebIdentity with nothing in the error naming the claim.
+    # The "repository" claim is "owner/repo" under both formats, so matching it
+    # sidesteps the migration entirely - and matches exactly, with no wildcard.
+    #
+    # To restrict further, add a condition on another claim rather than
+    # narrowing this one: ":ref" for a single branch, ":environment" for a
+    # gated environment. AWS exposes actor, actor_id, job_workflow_ref,
+    # repository, repository_id, repository_owner_id, workflow, ref,
+    # environment and enterprise_id.
     condition {
-      test     = "StringLike"
-      variable = "token.actions.githubusercontent.com:sub"
-      values = compact([
-        "repo:${var.github_owner}/${var.github_repo}:*",
-        local.immutable_sub,
-      ])
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:repository"
+      values   = ["${var.github_owner}/${var.github_repo}"]
     }
   }
 }
