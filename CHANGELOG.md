@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/danb27/terraform-modules/compare/v0.2.0...v0.3.0) (2026-08-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **github-oidc-role:** scope trust by repository claim, drop numeric IDs ([#6](https://github.com/danb27/terraform-modules/issues/6))
+
+### Features
+
+* **github-oidc-role:** scope trust by repository claim, drop numeric IDs ([#6](https://github.com/danb27/terraform-modules/issues/6)) ([af096c1](https://github.com/danb27/terraform-modules/commit/af096c16ba5040f1f7ee728e50e2e752b40266b2))
+
 ## [0.2.0](https://github.com/danb27/terraform-modules/compare/v0.1.0...v0.2.0) (2026-08-01)
 
 
