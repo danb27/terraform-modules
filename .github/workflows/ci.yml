@@ -18,7 +18,7 @@ jobs:
 
       # Tool versions come from mise.toml, so CI and local development are
       # provably the same.
-      - uses: jdx/mise-action@v4.2.3
+      - uses: jdx/mise-action@v4.2.5
 
       - run: terraform fmt -check -recursive
 
